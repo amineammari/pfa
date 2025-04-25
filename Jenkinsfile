@@ -1,10 +1,5 @@
-pipeline {
+def pipeline(commit_id)
   agent any
-
-  environment {
-    MINIKUBE_IP = ""
-    COMMIT_ID = ""
-  }
 
   stages {
     stage('Preparation') {
@@ -12,19 +7,16 @@ pipeline {
         checkout scm
         sh 'git rev-parse --short HEAD > .git/commit-id'
         script {
-          COMMIT_ID = readFile('.git/commit-id').trim()
-          MINIKUBE_IP = sh(script: "minikube ip", returnStdout: true).trim()
+          commit_id = readFile('.git/commit-id').trim()
         }
       }
     }
 
     stage('Image Build') {
       steps {
-        echo "Building Docker image with tag: ${COMMIT_ID}"
-        sh """
-          scp -r -i \$(minikube ssh-key) ./ docker@${MINIKUBE_IP}:~/
-          minikube ssh -- "docker build ~/webapp -t webapp:${COMMIT_ID}"
-        """
+        echo "Building..."
+        sh "scp -r -i \$(minikube ssh-key) ./ docker@\$(minikube ip):~/"
+        sh "minikube ssh 'docker build webapp -t \$(commit_id)'"
         echo "Build Complete"
       }
     }
@@ -32,12 +24,10 @@ pipeline {
     stage('Deploy') {
       steps {
         echo "Deploying to Kubernetes..."
-        sh "kubectl set image deployment/webapp webapp=webapp:${COMMIT_ID} || true"
+        sh "kubectl set image deployment/richardchesterwood-k8s-fleetman-webapp-angular-release-0 webapp=\$(commit_id) --manifests/workloads.yaml"
         sh "kubectl apply -f manifests/"
         sh "kubectl get all -f manifests/"
         echo "Deployment Complete"
       }
     }
   }
-}
-
