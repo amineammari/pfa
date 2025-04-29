@@ -1,58 +1,36 @@
+def commit_id
 pipeline {
-  agent any
-
-  environment {
-    COMMIT_ID = ''
-  }
-
-  stages {
-    stage('Preparation') {
-      steps {
-        checkout scm
-        sh 'git rev-parse --short HEAD > commit_id.txt'
-        script {
-          COMMIT_ID = readFile('commit_id.txt').trim()
+    agent any
+    stages {
+        stage('Preparation') {
+            steps {
+                checkout scm
+                sh "git rev-parse --short HEAD > .git/commit-id"
+                script {
+                    commit_id = readFile('.git/commit-id').trim()
+                }
+            }
         }
-        echo "Commit tag: ${COMMIT_ID}"
-      }
+        stage('Image Build') {
+            steps {
+                echo "Copying files to Minikube for build..."
+                sh "minikube cp /var/lib/jenkins/.jenkins/workspace/fleetman-deployment minikube:/tmp/build"
+                echo "BUILDING docker image..........."
+                sh "export MINIKUBE_HOME=/var/lib/jenkins/.minikube && minikube ssh 'cd /tmp/build && docker build -t fleetman-webapp:${commit_id} .'"
+                echo 'build complete'
+                // Skip Docker Hub push due to DNS issues
+            }
+        }
+        stage('Deploy') {
+            steps {
+                echo 'Deploying to Minikube'
+                sh "sed -i -r 's|richardchesterwood/k8s-fleetman-webapp:release2|fleetman-webapp:${commit_id}|' /var/lib/jenkins/k8s-fleetman-deploy/replicaset-webapp.yml"
+                sh 'kubectl apply -f /var/lib/jenkins/k8s-fleetman-deploy/replicaset-webapp.yml'
+                sh 'kubectl apply -f /var/lib/jenkins/k8s-fleetman-deploy/webapp-service.yml'
+                sh 'kubectl get all'
+                echo 'deployment complete'
+            }
+        }
     }
-
-    stage('Install & Build Frontend') {
-      steps {
-        echo "Installing NPM dependencies…"
-        sh 'npm install'
-        echo "Building Angular app…"
-        // adapte --prod si nécessaire ou la commande exact de ton projet
-        sh 'npm run build -- --output-path=dist'
-      }
-    }
-
-    stage('Build & Load Docker Image') {
-      steps {
-        echo "Building Docker image webapp:${COMMIT_ID}"
-        // Attention : ton Dockerfile doit COPY dist/ (sans slash leading)
-        sh "docker build -t webapp:${COMMIT_ID} ."
-        echo "Loading image into Minikube"
-        sh "minikube image load webapp:${COMMIT_ID}"
-      }
-    }
-
-    stage('Deploy to Kubernetes') {
-      steps {
-        echo "Updating manifests with image tag"
-        sh """
-          sed -i -E "s|image: [^ ]+|image: webapp:${COMMIT_ID}|g" manifests/workloads.yaml
-        """
-        echo "Applying manifests…"
-        sh 'kubectl apply -f manifests/'
-        sh 'kubectl get all'
-      }
-    }
-  }
-
-  post {
-    success { echo "✅ Déploiement webapp:${COMMIT_ID} terminé !" }
-    failure { echo "❌ Échec du pipeline, regarde les logs !" }
-  }
 }
 
