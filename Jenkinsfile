@@ -20,7 +20,7 @@ pipeline {
             steps {
                 echo 'Displaying the workspace structure for path debugging...'
                 sh 'pwd' // Affiche le répertoire actuel
-                sh 'ls -R' // Affiche la structure du projet dans le workspace
+                sh 'ls -R' // Affiche la structure complète du projet dans le workspace
             }
         }
 
@@ -34,6 +34,13 @@ pipeline {
                     def angular_path = sh(script: "find . -type d -name 'k8s-fleetman-webapp-angular' | head -n 1", returnStdout: true).trim()
                     echo "Found Angular project at: ${angular_path}"
 
+                    // Si le chemin n'est pas trouvé, ajouter une recherche avec un joker
+                    if (angular_path == "") {
+                        angular_path = sh(script: "find . -type d -name 'k8s-fleetman-webapp-angular*' | head -n 1", returnStdout: true).trim()
+                        echo "Trying with wildcard: ${angular_path}"
+                    }
+
+                    // Vérifier si le chemin est toujours vide
                     if (angular_path == "") {
                         error "Angular project not found in the workspace"
                     }
