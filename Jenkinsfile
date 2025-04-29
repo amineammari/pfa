@@ -1,6 +1,10 @@
 def commit_id
 pipeline {
     agent any
+    environment {
+        MINIKUBE_HOME = '/home/amine/.minikube'
+        KUBECONFIG = '/home/amine/.kube/config'
+    }
     stages {
         stage('Preparation') {
             steps {
@@ -11,24 +15,29 @@ pipeline {
                 }
             }
         }
+
         stage('Image Build') {
             steps {
-                echo "Copying files to Minikube for build..."
-                sh "minikube cp /var/lib/jenkins/.jenkins/workspace/fleetman-deployment minikube:/tmp/build"
-                echo "BUILDING docker image..........."
-                sh "export MINIKUBE_HOME=/var/lib/jenkins/.minikube && minikube ssh 'cd /tmp/build && docker build -t fleetman-webapp:${commit_id} .'"
-                echo 'build complete'
-                // Skip Docker Hub push due to DNS issues
+                echo "Setting Docker env to point to Minikube's Docker daemon..."
+                sh 'eval $(minikube docker-env)'
+                
+                echo "BUILDING docker image with tag: fleetman-webapp:${commit_id} ..."
+                sh "docker build -t fleetman-webapp:${commit_id} fleetman-deployment/"
+                
+                echo 'Build complete'
             }
         }
+
         stage('Deploy') {
             steps {
                 echo 'Deploying to Minikube'
-                sh "sed -i -r 's|richardchesterwood/k8s-fleetman-webapp:release2|fleetman-webapp:${commit_id}|' /var/lib/jenkins/k8s-fleetman-deploy/replicaset-webapp.yml"
+                sh """
+                    sed -i -r 's|richardchesterwood/k8s-fleetman-webapp:release2|fleetman-webapp:${commit_id}|' /var/lib/jenkins/k8s-fleetman-deploy/replicaset-webapp.yml
+                """
                 sh 'kubectl apply -f /var/lib/jenkins/k8s-fleetman-deploy/replicaset-webapp.yml'
                 sh 'kubectl apply -f /var/lib/jenkins/k8s-fleetman-deploy/webapp-service.yml'
                 sh 'kubectl get all'
-                echo 'deployment complete'
+                echo 'Deployment complete'
             }
         }
     }
