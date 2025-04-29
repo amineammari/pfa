@@ -29,12 +29,16 @@ pipeline {
                 echo "Setting Docker env to point to Minikube's Docker daemon..."
                 sh 'eval $(minikube docker-env)'
 
-                // Calculer dynamiquement le chemin du projet Angular
+                // Recherche dynamique du chemin du projet Angular
                 script {
-                    def angular_path = sh(script: "find . -type d -name 'k8s-fleetman-webapp-angular'", returnStdout: true).trim()
+                    def angular_path = sh(script: "find . -type d -name 'k8s-fleetman-webapp-angular' | head -n 1", returnStdout: true).trim()
                     echo "Found Angular project at: ${angular_path}"
+
+                    if (angular_path == "") {
+                        error "Angular project not found in the workspace"
+                    }
                     
-                    // Exécuter le build Docker
+                    // Exécuter le build Docker avec le chemin trouvé
                     sh "docker build -t fleetman-webapp:${commit_id} ${angular_path}"
                 }
 
