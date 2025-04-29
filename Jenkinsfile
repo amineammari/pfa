@@ -16,13 +16,27 @@ pipeline {
             }
         }
 
+        stage('Debug Path') {
+            steps {
+                echo 'Displaying the workspace structure for path debugging...'
+                sh 'pwd' // Affiche le répertoire actuel
+                sh 'ls -R' // Affiche la structure du projet dans le workspace
+            }
+        }
+
         stage('Image Build') {
             steps {
                 echo "Setting Docker env to point to Minikube's Docker daemon..."
                 sh 'eval $(minikube docker-env)'
 
-                echo "BUILDING docker image with tag: fleetman-webapp:${commit_id} ..."
-                sh "docker build -t fleetman-webapp:${commit_id} project/k8s-fleetman/microservice-source-code/release2/k8s-fleetman-webapp-angular"
+                // Calculer dynamiquement le chemin du projet Angular
+                script {
+                    def angular_path = sh(script: "find . -type d -name 'k8s-fleetman-webapp-angular'", returnStdout: true).trim()
+                    echo "Found Angular project at: ${angular_path}"
+                    
+                    // Exécuter le build Docker
+                    sh "docker build -t fleetman-webapp:${commit_id} ${angular_path}"
+                }
 
                 echo 'Build complete'
             }
